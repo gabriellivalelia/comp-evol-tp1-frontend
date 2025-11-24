@@ -1,5 +1,11 @@
+import { MainContainer, LeftContainer } from "./styles";
+
 function Footer() {
-  return <div>Hi, I'm the Footer component.</div>;
+  return (
+    <MainContainer>
+      <LeftContainer>Comida Di Buteco BH - Rota Otimizada</LeftContainer>
+    </MainContainer>
+  );
 }
 
 export default Footer;

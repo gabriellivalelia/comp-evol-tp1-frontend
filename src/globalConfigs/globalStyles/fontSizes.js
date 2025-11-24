@@ -8,6 +8,7 @@ const FontSizes = {
   XLARGE: "2em",
   XXLARGE: "3em",
   XXXLARGE: "4em",
+  XXXXLARGE: "5em",
 };
 
 export default FontSizes;
