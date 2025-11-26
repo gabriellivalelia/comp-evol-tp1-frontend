@@ -31,6 +31,7 @@ import {
   InfoBox,
 } from "./styles";
 import { getAllCoordinates } from "../../data/barCoordinates";
+import routeOptimizationService from "../../services/routeOptimizationService";
 
 function Filters() {
   const navigate = useNavigate();
@@ -50,6 +51,9 @@ function Filters() {
     menuOptions: [],
   });
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFilters((prev) => ({
@@ -68,11 +72,37 @@ function Filters() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Filtros selecionados:", filters);
-    // Navegar para a página de melhor rota com flag para recalcular
-    navigate("/bestRoute", { state: { recalculate: true, filters } });
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log("Filtros selecionados:", filters);
+
+      // Chamar API para otimizar rota
+      const response = await routeOptimizationService.optimizeRoute(filters);
+      const formattedData =
+        routeOptimizationService.formatForBestRoute(response);
+
+      console.log("Rota otimizada:", formattedData);
+
+      // Navegar para a página de melhor rota com os dados otimizados
+      navigate("/bestRoute", {
+        state: {
+          recalculate: true,
+          filters,
+          optimizedRoute: formattedData,
+        },
+      });
+    } catch (err) {
+      console.error("Erro ao otimizar rota:", err);
+      setError(err.message || "Erro ao calcular rota. Tente novamente.");
+      // Ainda assim navega, mas sem dados otimizados (usará mock)
+      navigate("/bestRoute", { state: { recalculate: true, filters } });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Opções de menu disponíveis
@@ -326,9 +356,28 @@ function Filters() {
             </InfoBox>
           </Section>
 
+          {/* Mensagem de erro */}
+          {error && (
+            <InfoBox
+              style={{
+                backgroundColor: "#ffe6e6",
+                borderColor: "#ff4444",
+                marginTop: "1rem",
+              }}
+            >
+              <p>
+                <strong>❌ Erro:</strong> {error}
+              </p>
+            </InfoBox>
+          )}
+
           {/* Botão de envio */}
           <ButtonContainer>
-            <SubmitButton type="submit">🚀 Encontrar Melhor Rota</SubmitButton>
+            <SubmitButton type="submit" disabled={isLoading}>
+              {isLoading
+                ? "⏳ Calculando melhor rota..."
+                : "🚀 Encontrar Melhor Rota"}
+            </SubmitButton>
           </ButtonContainer>
         </form>
       </FormContainer>

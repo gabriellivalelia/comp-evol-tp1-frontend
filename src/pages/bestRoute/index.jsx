@@ -66,6 +66,15 @@ const center = {
 function BestRoute() {
   const location = useLocation();
   const shouldRecalculate = location.state?.recalculate || false;
+  const optimizedRoute = location.state?.optimizedRoute || null;
+
+  // Usar dados otimizados da API se disponíveis
+  const barsDataToUse = optimizedRoute?.barsData
+    ? optimizedRoute.barsData
+    : mockBarsData;
+
+  // Dados organizados por dia (se disponível)
+  const daysByDate = optimizedRoute?.days || null;
 
   // Tentar recuperar estado do cache ao inicializar
   const getCachedState = () => {
@@ -84,18 +93,19 @@ function BestRoute() {
   };
 
   const cachedState = getCachedState();
-
   const [selectedBar, setSelectedBar] = useState(
     cachedState?.selectedBar || null
   );
   const [directions, setDirections] = useState(null);
+  const [directionsPerDay, setDirectionsPerDay] = useState([]); // Array de direções, uma por dia
   const [isLoading, setIsLoading] = useState(false);
   const [routeStats, setRouteStats] = useState(
-    cachedState?.routeStats || {
-      totalDistance: "0 km",
-      totalDuration: "0 min",
-      numberOfStops: mockBarsData.length,
-    }
+    optimizedRoute?.routeStats ||
+      cachedState?.routeStats || {
+        totalDistance: "0 km",
+        totalDuration: "0 min",
+        numberOfStops: barsDataToUse.length,
+      }
   );
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
@@ -133,56 +143,149 @@ function BestRoute() {
     setIsLoading(true);
     setIsMapLoaded(true);
 
-    // Criar waypoints (pontos intermediários)
-    const waypoints = mockBarsData.slice(1, -1).map((bar) => ({
-      location: { lat: bar.lat, lng: bar.lng },
-      stopover: true,
-    }));
-
-    // Solicitar direções
     const directionsService = new window.google.maps.DirectionsService();
 
-    directionsService.route(
-      {
-        origin: { lat: mockBarsData[0].lat, lng: mockBarsData[0].lng },
-        destination: {
-          lat: mockBarsData[mockBarsData.length - 1].lat,
-          lng: mockBarsData[mockBarsData.length - 1].lng,
-        },
-        waypoints: waypoints,
-        optimizeWaypoints: false, // Já recebemos a ordem otimizada da API
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === window.google.maps.DirectionsStatus.OK) {
-          setDirections(result);
+    // Se temos dados organizados por dia, calcular rotas separadas
+    if (daysByDate && daysByDate.length > 0) {
+      const directionsPromises = daysByDate.map((day) => {
+        const dayBars = day.bars;
 
-          // Calcular estatísticas da rota
-          const route = result.routes[0];
-          let totalDistance = 0;
-          let totalDuration = 0;
-
-          route.legs.forEach((leg) => {
-            totalDistance += leg.distance.value;
-            totalDuration += leg.duration.value;
+        if (dayBars.length === 1) {
+          // Apenas um bar neste dia, não precisa de rota
+          return Promise.resolve({
+            color: day.color,
+            directions: null,
+            singleBar: dayBars[0],
           });
-
-          setRouteStats({
-            totalDistance: `${(totalDistance / 1000).toFixed(1)} km`,
-            totalDuration: `${Math.round(totalDuration / 60)} min`,
-            numberOfStops: mockBarsData.length,
-          });
-        } else {
-          console.error(`Erro ao calcular rota: ${status}`);
         }
+
+        const waypoints = dayBars.slice(1, -1).map((bar) => ({
+          location: { lat: bar.lat, lng: bar.lng },
+          stopover: true,
+        }));
+
+        return new Promise((resolve) => {
+          directionsService.route(
+            {
+              origin: { lat: dayBars[0].lat, lng: dayBars[0].lng },
+              destination: {
+                lat: dayBars[dayBars.length - 1].lat,
+                lng: dayBars[dayBars.length - 1].lng,
+              },
+              waypoints: waypoints,
+              optimizeWaypoints: false,
+              travelMode: window.google.maps.TravelMode.DRIVING,
+            },
+            (result, status) => {
+              if (status === window.google.maps.DirectionsStatus.OK) {
+                resolve({
+                  color: day.color,
+                  directions: result,
+                  singleBar: null,
+                });
+              } else {
+                console.error(
+                  `Erro ao calcular rota do dia ${day.displayDate}: ${status}`
+                );
+                resolve({
+                  color: day.color,
+                  directions: null,
+                  singleBar: null,
+                });
+              }
+            }
+          );
+        });
+      });
+
+      Promise.all(directionsPromises).then((results) => {
+        setDirectionsPerDay(results);
+
+        // Sempre calcular distância e duração real do Google Maps
+        let totalDistance = 0;
+        let totalDuration = 0;
+
+        results.forEach((dayRoute) => {
+          if (dayRoute.directions) {
+            const route = dayRoute.directions.routes[0];
+            route.legs.forEach((leg) => {
+              totalDistance += leg.distance.value;
+              totalDuration += leg.duration.value;
+            });
+          }
+        });
+
+        // Atualizar stats com valores reais do Google Maps
+        setRouteStats({
+          totalDistance: `${(totalDistance / 1000).toFixed(1)} km`,
+          totalDuration: `${Math.round(totalDuration / 60)} min`,
+          numberOfStops:
+            optimizedRoute?.routeStats?.numberOfStops || barsDataToUse.length,
+          numberOfDays: daysByDate.length,
+          cost: optimizedRoute?.routeStats?.cost,
+        });
+
         setIsLoading(false);
-      }
-    );
-  }, [isMapLoaded, cachedState?.routeStats?.totalDistance, shouldRecalculate]);
+      });
+    } else {
+      // Fallback: rota única (modo antigo)
+      const waypoints = barsDataToUse.slice(1, -1).map((bar) => ({
+        location: { lat: bar.lat, lng: bar.lng },
+        stopover: true,
+      }));
+
+      directionsService.route(
+        {
+          origin: { lat: barsDataToUse[0].lat, lng: barsDataToUse[0].lng },
+          destination: {
+            lat: barsDataToUse[barsDataToUse.length - 1].lat,
+            lng: barsDataToUse[barsDataToUse.length - 1].lng,
+          },
+          waypoints: waypoints,
+          optimizeWaypoints: false,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === window.google.maps.DirectionsStatus.OK) {
+            setDirections(result);
+
+            // Sempre calcular distância e duração real do Google Maps
+            const route = result.routes[0];
+            let totalDistance = 0;
+            let totalDuration = 0;
+
+            route.legs.forEach((leg) => {
+              totalDistance += leg.distance.value;
+              totalDuration += leg.duration.value;
+            });
+
+            setRouteStats({
+              totalDistance: `${(totalDistance / 1000).toFixed(1)} km`,
+              totalDuration: `${Math.round(totalDuration / 60)} min`,
+              numberOfStops:
+                optimizedRoute?.routeStats?.numberOfStops ||
+                barsDataToUse.length,
+              cost: optimizedRoute?.routeStats?.cost,
+            });
+          } else {
+            console.error(`Erro ao calcular rota: ${status}`);
+          }
+          setIsLoading(false);
+        }
+      );
+    }
+  }, [
+    isMapLoaded,
+    cachedState?.routeStats?.totalDistance,
+    shouldRecalculate,
+    barsDataToUse,
+    optimizedRoute?.routeStats,
+    daysByDate,
+  ]);
 
   const handleExportRoute = () => {
     // Exportar rota (PDF, compartilhar, etc)
-    const routeText = mockBarsData
+    const routeText = barsDataToUse
       .map((bar, index) => `${index + 1}. ${bar.name}\n   ${bar.address}`)
       .join("\n\n");
 
@@ -213,6 +316,15 @@ function BestRoute() {
             <span>📍 Paradas:</span>
             <span>{routeStats.numberOfStops} bares</span>
           </InfoRow>
+          {routeStats.numberOfDays && (
+            <InfoRow>
+              <span>📅 Dias:</span>
+              <span>
+                {routeStats.numberOfDays}{" "}
+                {routeStats.numberOfDays === 1 ? "dia" : "dias"}
+              </span>
+            </InfoRow>
+          )}
           <InfoRow>
             <span>📏 Distância Total:</span>
             <span>{routeStats.totalDistance}</span>
@@ -220,27 +332,88 @@ function BestRoute() {
         </RouteInfo>
 
         <BarList>
-          {mockBarsData.map((bar, index) => (
-            <BarCard
-              key={bar.id}
-              isActive={selectedBar === bar.id}
-              delay={`${index * 0.1}s`}
-              onClick={() => setSelectedBar(bar.id)}
-            >
-              <BarNumber isActive={selectedBar === bar.id}>
-                {index + 1}
-              </BarNumber>
-              <BarInfo>
-                <BarName isActive={selectedBar === bar.id}>{bar.name}</BarName>
-                <BarAddress isActive={selectedBar === bar.id}>
-                  {bar.address}
-                </BarAddress>
-                <BarRating isActive={selectedBar === bar.id}>
-                  ⭐ {bar.rating.toFixed(1)}
-                </BarRating>
-              </BarInfo>
-            </BarCard>
-          ))}
+          {daysByDate && daysByDate.length > 0
+            ? // Modo com dias separados
+              daysByDate.map((day, dayIndex) => (
+                <div key={day.date}>
+                  <div
+                    style={{
+                      padding: "12px 16px",
+                      backgroundColor: day.color,
+                      color: "white",
+                      fontWeight: "bold",
+                      fontSize: "1rem",
+                      borderRadius: "8px",
+                      marginBottom: "10px",
+                      marginTop: dayIndex > 0 ? "20px" : "0",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                    }}
+                  >
+                    📅 Dia {day.dayNumber} - {day.displayDate}
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        marginTop: "4px",
+                        opacity: 0.9,
+                      }}
+                    >
+                      {day.bars.length}{" "}
+                      {day.bars.length === 1 ? "bar" : "bares"}
+                    </div>
+                  </div>
+                  {day.bars.map((bar, barIndex) => (
+                    <BarCard
+                      key={bar.id}
+                      isActive={selectedBar === bar.id}
+                      delay={`${(dayIndex * 10 + barIndex) * 0.1}s`}
+                      onClick={() => setSelectedBar(bar.id)}
+                      style={{ borderLeft: `4px solid ${day.color}` }}
+                    >
+                      <BarNumber
+                        isActive={selectedBar === bar.id}
+                        style={{ backgroundColor: day.color }}
+                      >
+                        {barIndex + 1}
+                      </BarNumber>
+                      <BarInfo>
+                        <BarName isActive={selectedBar === bar.id}>
+                          {bar.name}
+                        </BarName>
+                        <BarAddress isActive={selectedBar === bar.id}>
+                          {bar.address}
+                        </BarAddress>
+                        <BarRating isActive={selectedBar === bar.id}>
+                          ⭐ {bar.rating.toFixed(1)} • 🕐 {bar.arrivalTime}
+                        </BarRating>
+                      </BarInfo>
+                    </BarCard>
+                  ))}
+                </div>
+              ))
+            : // Fallback: lista simples (modo antigo)
+              barsDataToUse.map((bar, index) => (
+                <BarCard
+                  key={bar.id}
+                  isActive={selectedBar === bar.id}
+                  delay={`${index * 0.1}s`}
+                  onClick={() => setSelectedBar(bar.id)}
+                >
+                  <BarNumber isActive={selectedBar === bar.id}>
+                    {index + 1}
+                  </BarNumber>
+                  <BarInfo>
+                    <BarName isActive={selectedBar === bar.id}>
+                      {bar.name}
+                    </BarName>
+                    <BarAddress isActive={selectedBar === bar.id}>
+                      {bar.address}
+                    </BarAddress>
+                    <BarRating isActive={selectedBar === bar.id}>
+                      ⭐ {bar.rating.toFixed(1)}
+                    </BarRating>
+                  </BarInfo>
+                </BarCard>
+              ))}
         </BarList>
 
         <ExportButton onClick={handleExportRoute}>
@@ -271,39 +444,91 @@ function BestRoute() {
             }}
           >
             {/* Marcadores numerados */}
-            {mockBarsData.map((bar, index) => (
-              <Marker
-                key={bar.id}
-                position={{ lat: bar.lat, lng: bar.lng }}
-                label={{
-                  text: `${index + 1}`,
-                  color: "white",
-                  fontWeight: "bold",
-                  fontSize: "14px",
-                }}
-                onClick={() => setSelectedBar(bar.id)}
-                animation={
-                  selectedBar === bar.id && window.google?.maps?.Animation
-                    ? window.google.maps.Animation.BOUNCE
-                    : null
-                }
-              />
-            ))}
+            {window.google?.maps && daysByDate && daysByDate.length > 0
+              ? // Marcadores com cores por dia
+                daysByDate.map((day) =>
+                  day.bars.map((bar, barIndex) => (
+                    <Marker
+                      key={bar.id}
+                      position={{ lat: bar.lat, lng: bar.lng }}
+                      label={{
+                        text: `${barIndex + 1}`,
+                        color: "white",
+                        fontWeight: "bold",
+                        fontSize: "14px",
+                      }}
+                      icon={{
+                        path: window.google.maps.SymbolPath.CIRCLE,
+                        scale: 12,
+                        fillColor: day.color,
+                        fillOpacity: 1,
+                        strokeColor: "white",
+                        strokeWeight: 2,
+                        labelOrigin: new window.google.maps.Point(0, 0),
+                      }}
+                      onClick={() => setSelectedBar(bar.id)}
+                      animation={
+                        selectedBar === bar.id && window.google.maps.Animation
+                          ? window.google.maps.Animation.BOUNCE
+                          : null
+                      }
+                    />
+                  ))
+                )
+              : window.google?.maps
+              ? // Marcadores simples (modo antigo)
+                barsDataToUse.map((bar, index) => (
+                  <Marker
+                    key={bar.id}
+                    position={{ lat: bar.lat, lng: bar.lng }}
+                    label={{
+                      text: `${index + 1}`,
+                      color: "white",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                    }}
+                    onClick={() => setSelectedBar(bar.id)}
+                    animation={
+                      selectedBar === bar.id && window.google.maps.Animation
+                        ? window.google.maps.Animation.BOUNCE
+                        : null
+                    }
+                  />
+                ))
+              : null}
 
-            {/* Renderizar a rota */}
-            {directions && (
-              <DirectionsRenderer
-                directions={directions}
-                options={{
-                  suppressMarkers: true, // Usamos nossos próprios marcadores
-                  polylineOptions: {
-                    strokeColor: "#FF6B35",
-                    strokeWeight: 5,
-                    strokeOpacity: 0.8,
-                  },
-                }}
-              />
-            )}
+            {/* Renderizar rotas por dia com cores diferentes */}
+            {directionsPerDay && directionsPerDay.length > 0
+              ? directionsPerDay.map((dayRoute, index) =>
+                  dayRoute.directions ? (
+                    <DirectionsRenderer
+                      key={`day-${index}`}
+                      directions={dayRoute.directions}
+                      options={{
+                        suppressMarkers: true,
+                        polylineOptions: {
+                          strokeColor: dayRoute.color,
+                          strokeWeight: 5,
+                          strokeOpacity: 0.8,
+                        },
+                      }}
+                    />
+                  ) : null
+                )
+              : // Fallback: rota única (modo antigo)
+                directions && (
+                  <DirectionsRenderer
+                    directions={directions}
+                    options={{
+                      suppressMarkers: true,
+                      polylineOptions: {
+                        strokeColor: "#FF6B35",
+                        strokeWeight: 5,
+                        strokeOpacity: 0.8,
+                      },
+                    }}
+                  />
+                )}
           </GoogleMap>
         </LoadScript>
 
