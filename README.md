@@ -47,7 +47,7 @@ npm install
 O projeto utiliza um arquivo `.env` na raiz para definir variáveis sensíveis, como a URL da API backend e a chave da API do Google Maps.
 
 - `VITE_API_URL` — URL da API backend (por padrão: `http://localhost:5000`)
-- `VITE_GOOGLE_MAPS_API_KEY` — **NUNCA publique sua chave!**
+- `VITE_GOOGLE_MAPS_API_KEY` — Chave da API do Google Maps
 
 Como usar:
 
@@ -69,11 +69,6 @@ cp .env.example .env
 ```
 VITE_GOOGLE_MAPS_API_KEY="sua-chave-aqui"
 ```
-
-**Recomendações de segurança:**
-
-- Restrinja o uso da chave para os domínios do seu projeto no Google Cloud Console
-- Nunca compartilhe ou publique sua chave em repositórios públicos
 
 #### 4. Iniciar o servidor de desenvolvimento
 
@@ -102,7 +97,5 @@ O frontend consome a API REST do backend Comida di Buteco:
 - **Documentação do React Router**: [https://reactrouter.com/](https://reactrouter.com/)
 - **Documentação do Zustand**: [https://zustand-demo.pmnd.rs/](https://zustand-demo.pmnd.rs/)
 - **Documentação do Material UI**: [https://mui.com/](https://mui.com/)
-
-## 📄 Licença
 
 Este projeto é parte do trabalho acadêmico da disciplina de Computação Evolucionária - UFMG 2025.2
