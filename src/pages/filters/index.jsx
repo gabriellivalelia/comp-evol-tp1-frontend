@@ -40,15 +40,23 @@ function Filters() {
   const allBarsData = getAllCoordinates();
   const availableBars = allBarsData.map((bar) => bar.name).sort();
 
+  // Função para obter a data de amanhã no formato yyyy-mm-dd
+  const getTomorrow = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yyyy = tomorrow.getFullYear();
+    const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
+    const dd = String(tomorrow.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const [filters, setFilters] = useState({
-    startDate: "",
-    endDate: "",
-    daysOfWeek: [],
+    startDate: getTomorrow(),
+    endDate: getTomorrow(),
     startTime: "16:00",
     endTime: "23:00",
     startPoint: availableBars[0] || "", // Primeiro bar como padrão
     minRating: "4.0",
-    menuOptions: [],
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -62,31 +70,49 @@ function Filters() {
     }));
   };
 
-  const handleMuiMultiSelectChange = (name) => (event) => {
-    const {
-      target: { value },
-    } = event;
-    setFilters((prev) => ({
-      ...prev,
-      [name]: typeof value === "string" ? value.split(",") : value,
-    }));
-  };
+  // handleMuiMultiSelectChange removido
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsLoading(false);
     setError(null);
 
-    try {
-      console.log("Filtros selecionados:", filters);
+    // Validação de datas e horários
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = filters.startDate ? new Date(filters.startDate) : null;
+    const endDate = filters.endDate ? new Date(filters.endDate) : null;
+    const startTime = filters.startTime;
+    const endTime = filters.endTime;
 
+    if (!startDate || !endDate) {
+      setError("Por favor, preencha as datas de início e fim.");
+      return;
+    }
+    if (startDate < today) {
+      setError("A data de início não pode ser no passado.");
+      return;
+    }
+    if (endDate < startDate) {
+      setError("A data de fim não pode ser anterior à data de início.");
+      return;
+    }
+    if (startDate.getTime() === endDate.getTime() && startTime && endTime) {
+      // Se for o mesmo dia, horário de término deve ser maior que o de início
+      if (endTime <= startTime) {
+        setError(
+          "O horário de término deve ser maior que o de início no mesmo dia."
+        );
+        return;
+      }
+    }
+
+    setIsLoading(true);
+    try {
       // Chamar API para otimizar rota
       const response = await routeOptimizationService.optimizeRoute(filters);
       const formattedData =
         routeOptimizationService.formatForBestRoute(response);
-
-      console.log("Rota otimizada:", formattedData);
-
       // Navegar para a página de melhor rota com os dados otimizados
       navigate("/bestRoute", {
         state: {
@@ -96,7 +122,6 @@ function Filters() {
         },
       });
     } catch (err) {
-      console.error("Erro ao otimizar rota:", err);
       setError(err.message || "Erro ao calcular rota. Tente novamente.");
       // Ainda assim navega, mas sem dados otimizados (usará mock)
       navigate("/bestRoute", { state: { recalculate: true, filters } });
@@ -105,17 +130,7 @@ function Filters() {
     }
   };
 
-  // Opções de menu disponíveis
-  const menuOptionsAvailable = [
-    "Frango",
-    "Carne",
-    "Peixe",
-    "Porco",
-    "Vegetariano",
-    "Vegano",
-    "Petiscos Tradicionais",
-    "Massas",
-  ];
+  // menuOptionsAvailable removido
 
   return (
     <PageContainer>
@@ -202,55 +217,7 @@ function Filters() {
                 gastronômico.
               </p>
             </InfoBox>
-            <FormRow columns="1fr">
-              <FormGroup>
-                <Label>
-                  <LabelIcon>📆</LabelIcon>
-                  Dias da semana
-                </Label>
-                <FormControl fullWidth>
-                  <MuiSelect
-                    multiple
-                    value={filters.daysOfWeek}
-                    onChange={handleMuiMultiSelectChange("daysOfWeek")}
-                    input={<OutlinedInput />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip
-                            key={value}
-                            label={value}
-                            sx={{
-                              backgroundColor: "#FF6B35",
-                              color: "white",
-                              fontWeight: 600,
-                            }}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    <MenuItem value="Segunda">Segunda-feira</MenuItem>
-                    <MenuItem value="Terça">Terça-feira</MenuItem>
-                    <MenuItem value="Quarta">Quarta-feira</MenuItem>
-                    <MenuItem value="Quinta">Quinta-feira</MenuItem>
-                    <MenuItem value="Sexta">Sexta-feira</MenuItem>
-                    <MenuItem value="Sábado">Sábado</MenuItem>
-                    <MenuItem value="Domingo">Domingo</MenuItem>
-                  </MuiSelect>
-                </FormControl>
-                <InfoBox>
-                  <p>
-                    <strong>📅 Atenção:</strong> Os dias da semana selecionados
-                    representam quais dias da semana,{" "}
-                    <strong>dentro do intervalo de datas escolhido</strong>,
-                    você deseja fazer o tour. Por exemplo, se você selecionar
-                    Segunda e Quarta, o tour será planejado apenas para essas
-                    duas segundas e quartas dentro do período escolhido.
-                  </p>
-                </InfoBox>
-              </FormGroup>
-            </FormRow>
+            {/* Campo de dias da semana removido */}
           </Section>
 
           {/* Seção 2: Roteiro */}
@@ -311,41 +278,7 @@ function Filters() {
                   <option value="5.0">⭐ 5.0 - Perfeito</option>
                 </Select>
               </FormGroup>
-              <FormGroup>
-                <Label>
-                  <LabelIcon>🍴</LabelIcon>
-                  Opções do menu
-                </Label>
-                <FormControl fullWidth>
-                  <MuiSelect
-                    multiple
-                    value={filters.menuOptions}
-                    onChange={handleMuiMultiSelectChange("menuOptions")}
-                    input={<OutlinedInput />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip
-                            key={value}
-                            label={value}
-                            sx={{
-                              backgroundColor: "#FF6B35",
-                              color: "white",
-                              fontWeight: 600,
-                            }}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {menuOptionsAvailable.map((option, index) => (
-                      <MenuItem key={index} value={option}>
-                        {option}
-                      </MenuItem>
-                    ))}
-                  </MuiSelect>
-                </FormControl>
-              </FormGroup>
+              {/* Campo de opções do menu removido */}
             </FormRow>
             <InfoBox>
               <p>
