@@ -44,13 +44,10 @@ npm install
 
 #### 3. Configurar variáveis de ambiente
 
-O projeto pode utilizar um arquivo `.env` na raiz para definir a URL da API backend.
+O projeto utiliza um arquivo `.env` na raiz para definir variáveis sensíveis, como a URL da API backend e a chave da API do Google Maps.
 
-- `VITE_API_URL` é usado pelo frontend para apontar para a API do backend. Por padrão:
-
-```
-VITE_API_URL=http://localhost:5000
-```
+- `VITE_API_URL` — URL da API backend (por padrão: `http://localhost:5000`)
+- `VITE_GOOGLE_MAPS_API_KEY` — **NUNCA publique sua chave!**
 
 Como usar:
 
@@ -59,6 +56,24 @@ cp .env.example .env
 ```
 
 **Nota**: Certifique-se de que o backend está rodando na porta 5000.
+
+##### Configurando a chave da API do Google Maps
+
+1. Acesse o [Google Cloud Console](https://console.cloud.google.com/)
+2. Crie um novo projeto ou selecione um existente
+3. Ative a API "Maps JavaScript API"
+4. No menu "APIs e serviços" > "Credenciais", clique em "Criar credenciais" > "Chave de API"
+5. Copie a chave gerada
+6. No arquivo `.env`, substitua:
+
+```
+VITE_GOOGLE_MAPS_API_KEY="sua-chave-aqui"
+```
+
+**Recomendações de segurança:**
+
+- Restrinja o uso da chave para os domínios do seu projeto no Google Cloud Console
+- Nunca compartilhe ou publique sua chave em repositórios públicos
 
 #### 4. Iniciar o servidor de desenvolvimento
 
