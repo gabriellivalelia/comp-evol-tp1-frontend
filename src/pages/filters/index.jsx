@@ -54,7 +54,7 @@ function Filters() {
     startDate: getTomorrow(),
     endDate: getTomorrow(),
     startTime: "16:00",
-    endTime: "23:00",
+    endTime: "20:00",
     startPoint: availableBars[0] || "", // Primeiro bar como padrão
     minRating: "4.0",
   });
